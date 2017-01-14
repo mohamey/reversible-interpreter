@@ -1,4 +1,4 @@
-{-# Language MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-} 
+{-# Language MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, OverloadedStrings #-} 
 
 module Interpreter where
 
@@ -19,14 +19,14 @@ import Control.Monad.Writer
 {-------------------------------------------------------------------}
 
 data Val = I Int | B Bool
-           deriving (Eq, Show)
+           deriving (Eq, Show, Read)
 
 data Expr = Const Val
      | Add Expr Expr | Sub Expr Expr  | Mul Expr Expr | Div Expr Expr
      | And Expr Expr | Or Expr Expr | Not Expr 
      | Eq Expr Expr | Gt Expr Expr | Lt Expr Expr
      | Var String
-   deriving (Eq, Show)
+   deriving (Eq, Show, Read)
 
 type Name = String 
 type Env = Map.Map Name Val
@@ -96,6 +96,22 @@ data Statement = Assign String Expr
                | Seq Statement Statement
                | Try Statement Statement
                | Pass
-      deriving (Eq, Show)
+      deriving (Eq, Show, Read)
+
+stringToStatements :: [String] -> [Statement]
+stringToStatements = map read
+
+printStatements :: [Statement] -> IO ()
+printStatements [] = return ()
+printStatements (x:xs) = do
+  putStrLn $ show x
+  printStatements xs
+
+evaluateProgram :: String -> IO ()
+evaluateProgram fn = do
+  fileString <- readFile fn
+  putStrLn $ fileString
+  let stmts = stringToStatements $ lines fileString
+  printStatements stmts
 
 

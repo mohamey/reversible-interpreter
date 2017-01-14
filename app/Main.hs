@@ -1,6 +1,13 @@
 module Main where
 
 import Lib
+import Interpreter
+
+import System.Environment
 
 main :: IO ()
-main = someFunc
+main = do
+  args <- getArgs
+  let fileName = head args
+  evaluateProgram fileName
+
