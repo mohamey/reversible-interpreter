@@ -30,11 +30,17 @@ data Expr = Const Val
    deriving (Eq, Show, Read)
 
 type Name = String
-type Env = Map.Map Name Val
+type Env = Map.Map Name [Val]
 
+-- This will return the most recent value for a variable
 lookup k t = case Map.lookup k t of
+               Just (x:_) -> return x
+               Nothing -> fail ("Unknown var "++k)
+
+-- This will return the entire history for a variable, including it's current value
+lookupHistory k t = case Map.lookup k t of
                Just x -> return x
-               Nothing -> fail ("Unknown variable "++k)
+               Nothing -> return []
 
 {-- Monadic style expression evaluator,
  -- with error handling and Reader monad instance to carry dictionary
@@ -108,7 +114,7 @@ type Run a = StateT Env (ExceptT String IO) a
 runRun r = runExceptT ( runStateT r Map.empty)
 
 -- Update a value in the env
-set :: Name -> Val -> Run ()
+set :: Name -> [Val] -> Run ()
 set var val = state $ (\table -> ( (), Map.insert var val table))
 
 -- Take a statement and execute it
@@ -116,7 +122,8 @@ execStatement :: Statement -> Run ()
 execStatement (Assign var expr) = do
   env <- get
   Right val <- return $ runEval env $ eval expr -- Eval expression then set it in env
-  set var val
+  his <- lookupHistory var env -- Since env is now a list, get current list first
+  set var (val:his)
 
 execStatement (If expr stmt1 stmt2) = do
   env <- get
@@ -150,16 +157,24 @@ execStatement (Seq stmt1 stmt2) = do
 execStatement (Try stmt1 stmt2) = do
   catchError (execStatement stmt1) (\_ -> execStatement stmt2)
 
+-- Just do nothing
 execStatement Pass = do return ()
+
+-- Print out a list of values, used to print variable history
+printValues :: [Val] -> IO ()
+printValues [] = return ()
+printValues (x:xs) = do
+  putStrLn $ show x
+  printValues xs
 
 -- Look up variables from env
 inspectVar :: Name -> Run ()
 inspectVar var = do
   env <- get
-  val <- lookup var env
+  val <- lookupHistory var env
   case val of
-    (I _) -> liftIO $ putStrLn $ show val
-    (B _) -> liftIO $ putStrLn $ show val
+    (x:xs) -> liftIO $ printValues (x:xs)
+    [] -> liftIO $ putStrLn "No values for variable"
 
 -- Parse file's string to statements
 stringToStatements :: [String] -> [Statement]
@@ -172,26 +187,25 @@ printStatements (x:xs) = do
   putStrLn $ show x
   printStatements xs
 
-startProgram :: String -> Run ()
-startProgram fn = do
-  fileString <- liftIO $ readFile fn
-  -- putStrLn $ fileString
-  let (x:xs) = stringToStatements $ lines fileString -- Get statements
-  execStatement x
-  handleStatements xs
-  -- putStrLn "Finished"
-  -- printStatements stmts
-
-
 handleStatements :: [Statement] -> Run ()
 handleStatements [] = return ()
 handleStatements (x:xs) = do
-  -- liftIO $ putStrLn $ show x
+  liftIO $ putStrLn $ "Next statement: " ++ show x
   liftIO $ putStrLn "Enter a command"
   command <- liftIO $ getLine
   let cmdParts = splitOn " " command
   case head cmdParts of
     "step" -> execStatement x >> handleStatements xs
     "inspect" -> inspectVar (cmdParts !! 1) >> handleStatements (x:xs)
+    "exit" -> return ()
     _ -> return ()
+
+-- Call this function to start the interpreter
+startProgram :: String -> Run ()
+startProgram fn = do
+  fileString <- liftIO $ readFile fn -- Read in specified file
+  let (x:xs) = stringToStatements $ lines fileString -- Get statements
+  liftIO $ putStrLn $ "Executing: " ++ show x
+  execStatement x -- Execute the first statement
+  handleStatements xs -- Ask for input for the rest
 

@@ -1,2 +1,7 @@
 Assign "a" (Const (I 10))
+Assign "a" (Const (I 20))
+Assign "a" (Const (I 30))
 Assign "b" (Const (I 20))
+Assign "b" (Const (I 40))
+Assign "a" (Add (Var "a") (Var "b"))
+Pass
