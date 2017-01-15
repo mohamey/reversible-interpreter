@@ -5,6 +5,7 @@ module Interpreter where
 import Prelude hiding (lookup, print)
 import qualified Data.Map.Strict as Map
 import Data.Maybe
+import Data.List.Split
 
 import qualified System.IO as System
 
@@ -151,6 +152,15 @@ execStatement (Try stmt1 stmt2) = do
 
 execStatement Pass = do return ()
 
+-- Look up variables from env
+inspectVar :: Name -> Run ()
+inspectVar var = do
+  env <- get
+  val <- lookup var env
+  case val of
+    (I _) -> liftIO $ putStrLn $ show val
+    (B _) -> liftIO $ putStrLn $ show val
+
 -- Parse file's string to statements
 stringToStatements :: [String] -> [Statement]
 stringToStatements = map read
@@ -176,10 +186,12 @@ startProgram fn = do
 handleStatements :: [Statement] -> Run ()
 handleStatements [] = return ()
 handleStatements (x:xs) = do
-  liftIO $ putStrLn $ show x
+  -- liftIO $ putStrLn $ show x
   liftIO $ putStrLn "Enter a command"
   command <- liftIO $ getLine
-  case command of
+  let cmdParts = splitOn " " command
+  case head cmdParts of
     "step" -> execStatement x >> handleStatements xs
+    "inspect" -> inspectVar (cmdParts !! 1) >> handleStatements (x:xs)
     _ -> return ()
 
