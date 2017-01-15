@@ -5,13 +5,10 @@ import Interpreter
 
 import System.Environment
 
-runProgram :: String -> Run ()
-runProgram name = startProgram name
-
 main :: IO ()
 main = do
   args <- getArgs
   let fileName = head args
-  runProgram fileName
+  runRun $ startProgram fileName
   putStrLn "Finished"
 

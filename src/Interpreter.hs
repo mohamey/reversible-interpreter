@@ -106,69 +106,77 @@ data Statement = Assign String Expr
 type Run a = StateT Env (ExceptT String IO) a
 runRun r = runExceptT ( runStateT r Map.empty)
 
+-- Update a value in the env
 set :: Name -> Val -> Run ()
 set var val = state $ (\table -> ( (), Map.insert var val table))
 
+-- Take a statement and execute it
 execStatement :: Statement -> Run ()
 execStatement (Assign var expr) = do
   env <- get
-  Right val <- return $ runEval env $ eval expr
+  Right val <- return $ runEval env $ eval expr -- Eval expression then set it in env
   set var val
 
 execStatement (If expr stmt1 stmt2) = do
   env <- get
-  Right val <- return $ runEval env $ eval expr
+  Right val <- return $ runEval env $ eval expr -- Evaluate condition
   case val of
-    (B True) -> execStatement stmt1
-    (B False) -> execStatement stmt2
+    (B True) -> execStatement stmt1 -- If it's true, execute first statement
+    (B False) -> execStatement stmt2 -- If it's false, execute second statement
     _ -> fail "Expression did not resolve to boolean value"
 
 execStatement (While expr stmt) = do
   env <- get
   Right val <- return $ runEval env $ eval expr
   case val of
-    (B True) -> execStatement stmt
-    (B False) -> return ()
+    (B True) -> execStatement stmt >> -- If condition is true, execute first statement
+      execStatement (While expr stmt) -- Execute while loop again
+    (B False) -> return () -- If condition is false, return nothing
     _ -> fail "Expression did not resolve to boolean value"
-  execStatement (While expr stmt)
 
+-- Evaluate expression then print it
 execStatement (Print expr) = do
   env <- get
   Right val <- return $ runEval env $ eval expr
   liftIO $ putStrLn $ show val
   return ()
 
+-- Sequence to statements together
 execStatement (Seq stmt1 stmt2) = do
   execStatement stmt1 >> execStatement stmt2
 
+-- Try catch block
 execStatement (Try stmt1 stmt2) = do
   catchError (execStatement stmt1) (\_ -> execStatement stmt2)
 
 execStatement Pass = do return ()
 
+-- Parse file's string to statements
 stringToStatements :: [String] -> [Statement]
 stringToStatements = map read
 
+-- Print a list of statements
 printStatements :: [Statement] -> IO ()
 printStatements [] = return ()
 printStatements (x:xs) = do
   putStrLn $ show x
   printStatements xs
 
-startProgram :: String -> IO ()
+startProgram :: String -> Run ()
 startProgram fn = do
   fileString <- liftIO $ readFile fn
   -- putStrLn $ fileString
   let (x:xs) = stringToStatements $ lines fileString -- Get statements
   execStatement x
   handleStatements xs
-  putStrLn "Finished"
+  -- putStrLn "Finished"
   -- printStatements stmts
 
 
 handleStatements :: [Statement] -> Run ()
 handleStatements [] = return ()
 handleStatements (x:xs) = do
+  liftIO $ putStrLn $ show x
   liftIO $ putStrLn "Enter a command"
   command <- liftIO $ getLine
   case command of
