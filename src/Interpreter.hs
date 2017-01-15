@@ -29,7 +29,7 @@ data Expr = Const Val
      | Var String
    deriving (Eq, Show, Read)
 
-type Name = String
+type Name = String 
 type Env = Map.Map Name [Val]
 
 -- This will return the most recent value for a variable
@@ -117,6 +117,9 @@ runRun r = runExceptT ( runStateT r Map.empty)
 set :: Name -> [Val] -> Run ()
 set var val = state $ (\table -> ( (), Map.insert var val table))
 
+remove :: Name -> Run ()
+remove var = state $ (\table -> ( (), Map.delete var table))
+
 -- Take a statement and execute it
 execStatement :: Statement -> Run ()
 execStatement (Assign var expr) = do
@@ -187,18 +190,54 @@ printStatements (x:xs) = do
   putStrLn $ show x
   printStatements xs
 
-handleStatements :: [Statement] -> Run ()
-handleStatements [] = return ()
-handleStatements (x:xs) = do
+-- Delete the keys in the current environment
+deleteKeys :: [Name] -> Run ()
+deleteKeys [] = return ()
+deleteKeys (x:xs) = do remove x
+                       deleteKeys xs
+
+-- Given a list of keys and list of value histories, insert them into the env
+insertKeys :: [Name] -> [[Val]] -> Run ()
+insertKeys [] [] = return ()
+insertKeys [] _ = fail "Error rewriting env - Empty Key List" -- This should only happen if there's an unequal number of keys & values
+insertKeys _ [] = fail "Error rewriting env - Empty value list"
+insertKeys (n:ns) (v:vs) = do set n v
+                              insertKeys ns vs
+
+-- Takes a list of previous environments (Most recent first)
+-- A list of executed statements (Most recent first)
+-- A list of statements to be executed
+handleStatements :: [Env] -> [Statement] -> [Statement] -> Run ()
+handleStatements [] _ _ = fail "No Environment history" -- There should not be a scenario where there is no previous env
+handleStatements _ _ [] = return ()
+handleStatements (e:es) prev (x:xs) = do
   liftIO $ putStrLn $ "Next statement: " ++ show x
   liftIO $ putStrLn "Enter a command"
   command <- liftIO $ getLine
   let cmdParts = splitOn " " command
   case head cmdParts of
-    "step" -> execStatement x >> handleStatements xs
-    "inspect" -> inspectVar (cmdParts !! 1) >> handleStatements (x:xs)
+    "step" -> do execStatement x -- Execute statement
+                 env <- get -- Get current environment
+                 handleStatements (env:e:es) (x:prev) xs -- Add environment and statement to respective lists
+
+    "inspect" -> inspectVar (cmdParts !! 1) >> handleStatements (e:es) prev (x:xs) -- Print variable history
+
+    "stepbw" -> case prev of
+                  (_:[]) -> do liftIO $ putStrLn "No previous Command" -- Check if there are no previous commands
+                               handleStatements (e:es) prev (x:xs)
+                  [] -> do liftIO $ putStrLn "No previous Command" -- Check if there are no previous commands
+                           handleStatements (e:es) prev (x:xs)
+                  (p:ps) -> do env <- get
+                               let ks = Map.keys env -- Get keys currently in environment
+                               let newKeys = Map.keys (head es) -- Get keys from environment history
+                               let newVals = Map.elems (head es) -- Get value histories from environment history
+                               deleteKeys ks -- Delete keys currently in environment
+                               insertKeys newKeys newVals -- Add previous environment key/values to environment
+                               handleStatements es ps (p:x:xs) -- Move last executed statement to top of to-do list
     "exit" -> return ()
-    _ -> return ()
+    _ -> do liftIO $ putStrLn "Command not recognized"
+            handleStatements (e:es) prev (x:xs)
+
 
 -- Call this function to start the interpreter
 startProgram :: String -> Run ()
@@ -207,5 +246,6 @@ startProgram fn = do
   let (x:xs) = stringToStatements $ lines fileString -- Get statements
   liftIO $ putStrLn $ "Executing: " ++ show x
   execStatement x -- Execute the first statement
-  handleStatements xs -- Ask for input for the rest
+  env <- get
+  handleStatements [env] [x] xs -- Ask for input for the rest
 
